@@ -427,22 +427,34 @@ PMATRIX CreateMatrix (
 	numcols = width / GLYPH_WIDTH + 1;
 	numrows = height / GLYPH_HEIGHT + 1;
 
-	matrix = _r_mem_allocate (sizeof (MATRIX) + (sizeof (MATRIX_COLUMN) * numcols));
+        matrix = _r_mem_allocate (sizeof (MATRIX) + (sizeof (MATRIX_COLUMN) * numcols));
+
+        if (!matrix)
+                return NULL;
+
+        RtlZeroMemory (matrix, sizeof (MATRIX) + (sizeof (MATRIX_COLUMN) * numcols));
 
 	matrix->numcols = numcols;
 	matrix->numrows = numrows;
 	matrix->width = width;
 	matrix->height = height;
 
-	for (ULONG x = 0; x < numcols; x++)
-	{
-		matrix->column[x].length = numrows;
-		matrix->column[x].countdown = _r_math_getrandomrange (0, RND_MAX) % 100;
-		matrix->column[x].state = _r_math_getrandomrange (0, RND_MAX) % 2;
-		matrix->column[x].run_length = _r_math_getrandomrange (0, RND_MAX) % 20 + 3;
+        for (ULONG x = 0; x < numcols; x++)
+        {
+                matrix->column[x].length = numrows;
+                matrix->column[x].countdown = _r_math_getrandomrange (0, RND_MAX) % 100;
+                matrix->column[x].state = _r_math_getrandomrange (0, RND_MAX) % 2;
+                matrix->column[x].run_length = _r_math_getrandomrange (0, RND_MAX) % 20 + 3;
 
-		matrix->column[x].glyph = _r_mem_allocate (sizeof (GLYPH) * (numrows + 16));
-	}
+                matrix->column[x].blip_pos = 0;
+                matrix->column[x].blip_length = matrix->column[x].length;
+                matrix->column[x].is_started = FALSE;
+
+                matrix->column[x].glyph = _r_mem_allocate (sizeof (GLYPH) * (numrows + 16));
+
+                if (matrix->column[x].glyph)
+                        RtlZeroMemory (matrix->column[x].glyph, sizeof (GLYPH) * (numrows + 16));
+        }
 
         matrix->hdc_window = GetDC (hwnd);
 
