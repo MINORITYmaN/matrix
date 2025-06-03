@@ -80,9 +80,16 @@ typedef struct _MATRIX_COLUMN
 
 typedef struct _MATRIX
 {
-	// bitmap containing glyphs.
-	HDC hdc;
-	HBITMAP hbitmap;
+        // bitmap containing glyphs.
+        HDC hdc;
+        HBITMAP hbitmap;
+
+        // cached window dc and back-buffer for drawing
+        HDC hdc_window;
+        HDC hdc_back;
+        HBITMAP hbitmap_back;
+
+        INT current_hue;
 
 	ULONG width;
 	ULONG height;
