@@ -340,25 +340,28 @@ HBITMAP MakeBitmap (
 }
 
 VOID SetMatrixBitmap (
-	_In_ HDC hdc,
-	_Inout_ PMATRIX matrix,
-	_In_ INT hue
+        _Inout_ PMATRIX matrix,
+        _In_ INT hue
 )
 {
-	HBITMAP hbitmap;
-	HBITMAP hbitmap_old;
+        HBITMAP hbitmap;
+        HBITMAP hbitmap_old;
 
-	hbitmap = MakeBitmap (hdc, _r_sys_getimagebase (), IDR_GLYPH, hue);
+        if (matrix->current_hue == hue)
+                return;
 
-	if (!hbitmap)
-		return;
+        hbitmap = MakeBitmap (matrix->hdc_window, _r_sys_getimagebase (), IDR_GLYPH, hue);
+
+        if (!hbitmap)
+                return;
 
 	hbitmap_old = SelectObject (matrix->hdc, hbitmap);
 
 	if (hbitmap_old)
 		DeleteObject (hbitmap_old);
 
-	matrix->hbitmap = hbitmap;
+        matrix->hbitmap = hbitmap;
+        matrix->current_hue = hue;
 
 	SelectObject (matrix->hdc, matrix->hbitmap);
 }
@@ -370,13 +373,10 @@ VOID DecodeMatrix (
 {
 	static LONG new_hue = 0;
 
-	PMATRIX_COLUMN column;
-	HDC hdc;
+        PMATRIX_COLUMN column;
 
-	hdc = GetDC (hwnd);
-
-	if (!hdc)
-		return;
+        if (!matrix->hdc_back || !matrix->hdc_window)
+                return;
 
 	if (!new_hue)
 		new_hue = config.hue;
@@ -387,7 +387,7 @@ VOID DecodeMatrix (
 
 		RandomMatrixColumn (column);
 		ScrollMatrixColumn (column);
-		RedrawMatrixColumn (column, matrix, hdc, (ULONG)x * GLYPH_WIDTH);
+                RedrawMatrixColumn (column, matrix, matrix->hdc_back, (ULONG)x * GLYPH_WIDTH);
 	}
 
 	if (config.is_random)
@@ -407,20 +407,22 @@ VOID DecodeMatrix (
 		new_hue = config.hue;
 	}
 
-	SetMatrixBitmap (hdc, matrix, new_hue);
+        SetMatrixBitmap (matrix, new_hue);
 
-	ReleaseDC (hwnd, hdc);
+        BitBlt (matrix->hdc_window, 0, 0, matrix->width, matrix->height,
+                matrix->hdc_back, 0, 0, SRCCOPY);
 }
 
 PMATRIX CreateMatrix (
-	_In_ ULONG width,
-	_In_ ULONG height
+        _In_ HWND hwnd,
+        _In_ ULONG width,
+        _In_ ULONG height
 )
 {
-	PMATRIX matrix;
-	HDC hdc;
-	ULONG numcols;
-	ULONG numrows;
+        PMATRIX matrix;
+        HDC hdc;
+        ULONG numcols;
+        ULONG numrows;
 
 	numcols = width / GLYPH_WIDTH + 1;
 	numrows = height / GLYPH_HEIGHT + 1;
@@ -442,23 +444,30 @@ PMATRIX CreateMatrix (
 		matrix->column[x].glyph = _r_mem_allocate (sizeof (GLYPH) * (numrows + 16));
 	}
 
-	hdc = GetDC (NULL);
+        matrix->hdc_window = GetDC (hwnd);
 
-	if (hdc)
-	{
-		matrix->hdc = CreateCompatibleDC (hdc);
-		matrix->hbitmap = MakeBitmap (hdc, _r_sys_getimagebase (), IDR_GLYPH, config.hue);
+        if (matrix->hdc_window)
+        {
+                matrix->hdc_back = CreateCompatibleDC (matrix->hdc_window);
+                matrix->hbitmap_back = CreateCompatibleBitmap (matrix->hdc_window, width, height);
+                SelectObject (matrix->hdc_back, matrix->hbitmap_back);
+                PatBlt (matrix->hdc_back, 0, 0, width, height, BLACKNESS);
 
-		SelectObject (matrix->hdc, matrix->hbitmap);
+                hdc = matrix->hdc_window;
 
-		ReleaseDC (NULL, hdc);
-	}
+                matrix->hdc = CreateCompatibleDC (hdc);
+                matrix->hbitmap = MakeBitmap (hdc, _r_sys_getimagebase (), IDR_GLYPH, config.hue);
 
-	return matrix;
+                SelectObject (matrix->hdc, matrix->hbitmap);
+                matrix->current_hue = config.hue;
+        }
+
+        return matrix;
 }
 
 VOID DestroyMatrix (
-	_Inout_ PMATRIX *matrix
+        _In_ HWND hwnd,
+        _Inout_ PMATRIX *matrix
 )
 {
 	PMATRIX old_matrix;
@@ -467,8 +476,14 @@ VOID DestroyMatrix (
 	old_matrix = *matrix;
 	*matrix = NULL;
 
-	DeleteDC (old_matrix->hdc);
-	DeleteObject (old_matrix->hbitmap);
+        if (old_matrix->hdc_window)
+                ReleaseDC (hwnd, old_matrix->hdc_window);
+
+        DeleteDC (old_matrix->hdc_back);
+        DeleteObject (old_matrix->hbitmap_back);
+
+        DeleteDC (old_matrix->hdc);
+        DeleteObject (old_matrix->hbitmap);
 
 	for (ULONG_PTR x = 0; x < old_matrix->numcols; x++)
 	{
@@ -506,7 +521,7 @@ LRESULT CALLBACK ScreensaverProc (
 
 			pcs = (LPCREATESTRUCT)lparam;
 
-			matrix = CreateMatrix (pcs->cx, pcs->cy);
+                        matrix = CreateMatrix (hwnd, pcs->cx, pcs->cy);
 
 			if (!matrix)
 				return FALSE;
@@ -528,7 +543,7 @@ LRESULT CALLBACK ScreensaverProc (
 			{
 				SetWindowLongPtrW (hwnd, GWLP_USERDATA, 0);
 
-				DestroyMatrix (&matrix);
+                                DestroyMatrix (hwnd, &matrix);
 			}
 
 			if (config.is_preview && !GetParent (hwnd))
