@@ -168,7 +168,7 @@ VOID ScrollMatrixColumn (
 
 		// top-most part of "run". Delete a character off the top by
 		// darkening the glyph until it eventually disappears (turns black). 
-		// this gives the effect that the run as dropped downwards
+                // this gives the effect that the run has dropped downwards
 		else if (current_glyph_intensity > GlyphIntensity (last_glyph))
 		{
 			column->glyph[y] = DarkenGlyph (current_glyph);
@@ -182,7 +182,7 @@ VOID ScrollMatrixColumn (
 		last_glyph = column->glyph[y];
 	}
 
-	// change state from blanks <-> runs when the current run as expired
+        // change state from blanks <-> runs when the current run has expired
 	if (--column->run_length <= 0)
 	{
 		density = DENSITY_MAX - config.density + DENSITY_MIN;
