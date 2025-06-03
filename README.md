@@ -24,6 +24,10 @@ Originally written by J Brown 2003.
 - An SSE2-capable CPU
 - <s>KB2533623</s> KB3063858 update for Windows 7 was required [[x64](https://www.microsoft.com/en-us/download/details.aspx?id=47442) / [x32](https://www.microsoft.com/en-us/download/details.aspx?id=47409)]
 
+### Building:
+- Run `git submodule update --init --recursive` to fetch the `../routine` and `../builder` directories.
+- Open `matrix.sln` with Visual Studio 2022 or later (toolset **v143**) and build.
+
 ### Donate:
 - [Bitcoin](https://www.blockchain.com/btc/address/1LrRTXPsvHcQWCNZotA9RcwjsGcRghG96c) (BTC)
 - [Ethereum](https://www.blockchain.com/explorer/addresses/eth/0xe2C84A62eb2a4EF154b19bec0c1c106734B95960) (ETC)
