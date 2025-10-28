@@ -13,17 +13,43 @@ STATIC_DATA config = {0};
 
 #define RND_MAX INT_MAX
 
+FORCEINLINE LONG ClampLong (
+        _In_ LONG value,
+        _In_ LONG min_value,
+        _In_ LONG max_value
+)
+{
+        if (value < min_value)
+                return min_value;
+        if (value > max_value)
+                return max_value;
+        return value;
+}
+
 VOID ReadSettings ()
 {
-	config.speed = _r_config_getlong (L"Speed", SPEED_DEFAULT, NULL);
-	config.amount = _r_config_getlong (L"NumGlyphs", AMOUNT_DEFAULT, NULL);
-	config.density = _r_config_getlong (L"Density", DENSITY_DEFAULT, NULL);
-	config.hue = _r_config_getlong (L"Hue", HUE_DEFAULT, NULL);
+        LONG speed;
+        LONG amount;
+        LONG density;
+        LONG hue;
 
-	config.is_esc_only = _r_config_getboolean (L"IsEscOnly", FALSE, NULL);
+        speed = _r_config_getlong (L"Speed", SPEED_DEFAULT, NULL);
+        amount = _r_config_getlong (L"NumGlyphs", AMOUNT_DEFAULT, NULL);
+        density = _r_config_getlong (L"Density", DENSITY_DEFAULT, NULL);
+        hue = _r_config_getlong (L"Hue", HUE_DEFAULT, NULL);
 
-	config.is_random = _r_config_getboolean (L"Random", HUE_RANDOM, NULL);
-	config.is_smooth = _r_config_getboolean (L"RandomSmoothTransition", HUE_RANDOM_SMOOTHTRANSITION, NULL);
+        config.speed = ClampLong (speed, SPEED_MIN, SPEED_MAX);
+        config.amount = ClampLong (amount, AMOUNT_MIN, AMOUNT_MAX);
+        config.density = ClampLong (density, DENSITY_MIN, DENSITY_MAX);
+        config.hue = ClampLong (hue, HUE_MIN, HUE_MAX);
+
+        if (config.amount <= 0)
+                config.amount = AMOUNT_DEFAULT;
+
+        config.is_esc_only = _r_config_getboolean (L"IsEscOnly", FALSE, NULL);
+
+        config.is_random = _r_config_getboolean (L"Random", HUE_RANDOM, NULL);
+        config.is_smooth = _r_config_getboolean (L"RandomSmoothTransition", HUE_RANDOM_SMOOTHTRANSITION, NULL);
 }
 
 VOID SaveSettings ()
