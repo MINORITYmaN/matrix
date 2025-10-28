@@ -30,7 +30,7 @@ Originally written by J Brown 2003.
 
 ### Donate:
 - [Bitcoin](https://www.blockchain.com/btc/address/1LrRTXPsvHcQWCNZotA9RcwjsGcRghG96c) (BTC)
-- [Ethereum](https://www.blockchain.com/explorer/addresses/eth/0xe2C84A62eb2a4EF154b19bec0c1c106734B95960) (ETC)
+- [Ethereum](https://www.blockchain.com/explorer/addresses/eth/0xe2C84A62eb2a4EF154b19bec0c1c106734B95960) (ETH)
 - [Paypal](https://paypal.me/henrypp) (USD)
 - [Yandex Money](https://yoomoney.ru/to/4100115776040583) (RUB)
 
