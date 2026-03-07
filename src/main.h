@@ -38,6 +38,10 @@
 #define HUE_RANDOM FALSE
 #define HUE_RANDOM_SMOOTHTRANSITION TRUE
 
+#define GLYPH_SIZE_MIN     1
+#define GLYPH_SIZE_MAX     4
+#define GLYPH_SIZE_DEFAULT 1
+
 // constants inferred from matrix.bmp
 #define MAX_INTENSITY 5 // number of intensity levels
 #define GLYPH_WIDTH 14 // width of each glyph (pixels)
@@ -49,9 +53,11 @@ typedef struct _STATIC_DATA
 	LONG density;
 	LONG speed;
 	LONG hue;
+	LONG glyph_size;    // scale multiplier 1-4
 	BOOLEAN is_esc_only;
 	BOOLEAN is_random;
 	BOOLEAN is_smooth;
+	BOOLEAN is_dpi_scale; // auto-compute scale from monitor DPI
 	BOOLEAN is_preview;
 } STATIC_DATA, *PSTATIC_DATA;
 
@@ -95,6 +101,8 @@ typedef struct _MATRIX
 	ULONG height;
 	ULONG numcols;
 	ULONG numrows;
+	ULONG glyph_w;  // effective glyph width  (GLYPH_WIDTH  * scale)
+	ULONG glyph_h;  // effective glyph height (GLYPH_HEIGHT * scale)
 
 	MATRIX_COLUMN column[1];
 } MATRIX, *PMATRIX;

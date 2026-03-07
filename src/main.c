@@ -32,16 +32,19 @@ VOID ReadSettings ()
         LONG amount;
         LONG density;
         LONG hue;
+        LONG glyph_size;
 
         speed = _r_config_getlong_ex (L"Speed", SPEED_DEFAULT, NULL);
         amount = _r_config_getlong_ex (L"NumGlyphs", AMOUNT_DEFAULT, NULL);
         density = _r_config_getlong_ex (L"Density", DENSITY_DEFAULT, NULL);
         hue = _r_config_getlong_ex (L"Hue", HUE_DEFAULT, NULL);
+        glyph_size = _r_config_getlong_ex (L"GlyphSize", GLYPH_SIZE_DEFAULT, NULL);
 
         config.speed = ClampLong (speed, SPEED_MIN, SPEED_MAX);
         config.amount = ClampLong (amount, AMOUNT_MIN, AMOUNT_MAX);
         config.density = ClampLong (density, DENSITY_MIN, DENSITY_MAX);
         config.hue = ClampLong (hue, HUE_MIN, HUE_MAX);
+        config.glyph_size = ClampLong (glyph_size, GLYPH_SIZE_MIN, GLYPH_SIZE_MAX);
 
         if (config.amount <= 0)
                 config.amount = AMOUNT_DEFAULT;
@@ -50,6 +53,7 @@ VOID ReadSettings ()
 
         config.is_random = _r_config_getboolean_ex (L"Random", HUE_RANDOM, NULL);
         config.is_smooth = _r_config_getboolean_ex (L"RandomSmoothTransition", HUE_RANDOM_SMOOTHTRANSITION, NULL);
+        config.is_dpi_scale = _r_config_getboolean_ex (L"IsDpiScale", FALSE, NULL);
 }
 
 VOID SaveSettings ()
@@ -58,11 +62,13 @@ VOID SaveSettings ()
 	_r_config_setlong_ex (L"NumGlyphs", config.amount, NULL);
 	_r_config_setlong_ex (L"Density", config.density, NULL);
 	_r_config_setlong_ex (L"Hue", config.hue, NULL);
+	_r_config_setlong_ex (L"GlyphSize", config.glyph_size, NULL);
 
 	_r_config_setboolean_ex (L"IsEscOnly", config.is_esc_only, NULL);
 
 	_r_config_setboolean_ex (L"Random", config.is_random, NULL);
 	_r_config_setboolean_ex (L"RandomSmoothTransition", config.is_smooth, NULL);
+	_r_config_setboolean_ex (L"IsDpiScale", config.is_dpi_scale, NULL);
 }
 
 FORCEINLINE COLORREF HSLtoRGB (
@@ -126,17 +132,38 @@ FORCEINLINE VOID DrawGlyph (
 	intensity = GlyphIntensity (glyph);
 	glyph_idx = glyph & 0xFF;
 
-	BitBlt (
-		hdc,
-		xpos,
-		ypos,
-		GLYPH_WIDTH,
-		GLYPH_HEIGHT,
-		matrix->hdc,
-		glyph_idx * GLYPH_WIDTH,
-		intensity * GLYPH_HEIGHT,
-		SRCCOPY
-	);
+	if (matrix->glyph_w == GLYPH_WIDTH && matrix->glyph_h == GLYPH_HEIGHT)
+	{
+		BitBlt (
+			hdc,
+			xpos,
+			ypos,
+			GLYPH_WIDTH,
+			GLYPH_HEIGHT,
+			matrix->hdc,
+			glyph_idx * GLYPH_WIDTH,
+			intensity * GLYPH_HEIGHT,
+			SRCCOPY
+		);
+	}
+	else
+	{
+		SetStretchBltMode (hdc, COLORONCOLOR);
+
+		StretchBlt (
+			hdc,
+			xpos,
+			ypos,
+			matrix->glyph_w,
+			matrix->glyph_h,
+			matrix->hdc,
+			glyph_idx * GLYPH_WIDTH,
+			intensity * GLYPH_HEIGHT,
+			GLYPH_WIDTH,
+			GLYPH_HEIGHT,
+			SRCCOPY
+		);
+	}
 }
 
 FORCEINLINE VOID RedrawBlip (
@@ -291,7 +318,7 @@ VOID RedrawMatrixColumn (
 			if ((GlyphIntensity (glyph) >= MAX_INTENSITY - 1) && (i == column->blip_pos + 0 || i == column->blip_pos + 1 || i == column->blip_pos + 8 || i == column->blip_pos + 9))
 				glyph |= MAX_INTENSITY << 8;
 
-			DrawGlyph (matrix, hdc, xpos, (ULONG)i * GLYPH_HEIGHT, glyph);
+			DrawGlyph (matrix, hdc, xpos, (ULONG)i * matrix->glyph_h, glyph);
 
 			// clear redraw state
 			column->glyph[i] &= ~GLYPH_REDRAW;
@@ -414,7 +441,7 @@ VOID DecodeMatrix (
 
 		RandomMatrixColumn (column);
 		ScrollMatrixColumn (column);
-                RedrawMatrixColumn (column, matrix, matrix->hdc_back, (ULONG)x * GLYPH_WIDTH);
+                RedrawMatrixColumn (column, matrix, matrix->hdc_back, (ULONG)x * matrix->glyph_w);
 	}
 
 	if (config.is_random)
@@ -451,15 +478,32 @@ PMATRIX CreateMatrix (
         ULONG numcols;
         ULONG numrows;
 
-	numcols = width / GLYPH_WIDTH + 1;
-	numrows = height / GLYPH_HEIGHT + 1;
+	{
+		ULONG scale;
 
-        matrix = _r_mem_allocate (sizeof (MATRIX) + (sizeof (MATRIX_COLUMN) * numcols));
+		if (config.is_dpi_scale)
+		{
+			UINT dpi = _r_dc_getwindowdpi (hwnd);
+			scale = (ULONG)ClampLong ((LONG)(dpi / 96), GLYPH_SIZE_MIN, GLYPH_SIZE_MAX);
+		}
+		else
+		{
+			scale = (ULONG)config.glyph_size;
+		}
 
-        if (!matrix)
-                return NULL;
+		numcols = width / (GLYPH_WIDTH * scale) + 1;
+		numrows = height / (GLYPH_HEIGHT * scale) + 1;
 
-        RtlZeroMemory (matrix, sizeof (MATRIX) + (sizeof (MATRIX_COLUMN) * numcols));
+		matrix = _r_mem_allocate (sizeof (MATRIX) + (sizeof (MATRIX_COLUMN) * numcols));
+
+		if (!matrix)
+			return NULL;
+
+		RtlZeroMemory (matrix, sizeof (MATRIX) + (sizeof (MATRIX_COLUMN) * numcols));
+
+		matrix->glyph_w = GLYPH_WIDTH * scale;
+		matrix->glyph_h = GLYPH_HEIGHT * scale;
+	}
 
 	matrix->numcols = numcols;
 	matrix->numrows = numrows;
@@ -735,6 +779,7 @@ INT_PTR CALLBACK SettingsProc (
 			_r_ctrl_setstringformat (hwnd, IDC_DENSITY_RANGE, L"%d-%d", DENSITY_MIN, DENSITY_MAX);
 			_r_ctrl_setstringformat (hwnd, IDC_SPEED_RANGE, L"%d-%d", SPEED_MIN, SPEED_MAX);
 			_r_ctrl_setstringformat (hwnd, IDC_HUE_RANGE, L"%d-%d", HUE_MIN, HUE_MAX);
+			_r_ctrl_setstringformat (hwnd, IDC_GLYPH_SIZE_RANGE, L"%d-%d", GLYPH_SIZE_MIN, GLYPH_SIZE_MAX);
 
 			SendDlgItemMessageW (hwnd, IDC_AMOUNT, UDM_SETRANGE32, AMOUNT_MIN, AMOUNT_MAX);
 			SendDlgItemMessageW (hwnd, IDC_AMOUNT, UDM_SETPOS32, 0, (LPARAM)config.amount);
@@ -748,12 +793,17 @@ INT_PTR CALLBACK SettingsProc (
 			SendDlgItemMessageW (hwnd, IDC_HUE, UDM_SETRANGE32, HUE_MIN, HUE_MAX);
 			SendDlgItemMessageW (hwnd, IDC_HUE, UDM_SETPOS32, 0, (LPARAM)config.hue);
 
+			SendDlgItemMessageW (hwnd, IDC_GLYPH_SIZE, UDM_SETRANGE32, GLYPH_SIZE_MIN, GLYPH_SIZE_MAX);
+			SendDlgItemMessageW (hwnd, IDC_GLYPH_SIZE, UDM_SETPOS32, 0, (LPARAM)config.glyph_size);
+
 			CheckDlgButton (hwnd, IDC_RANDOMIZECOLORS_CHK, config.is_random);
 			CheckDlgButton (hwnd, IDC_RANDOMIZESMOOTH_CHK, config.is_smooth);
 			CheckDlgButton (hwnd, IDC_ISCLOSEONESC_CHK, config.is_esc_only);
+			CheckDlgButton (hwnd, IDC_DPISCALE_CHK, config.is_dpi_scale);
 
 			SendMessage (hwnd, WM_COMMAND, MAKEWPARAM (IDC_RANDOMIZECOLORS_CHK, 0), 0);
 			SendMessage (hwnd, WM_COMMAND, MAKEWPARAM (IDC_ISCLOSEONESC_CHK, 0), 0);
+			SendMessage (hwnd, WM_COMMAND, MAKEWPARAM (IDC_DPISCALE_CHK, 0), 0);
 
 			_r_ctrl_setstringformat (hwnd, IDC_ABOUT, L"<a href=\"%s\">Github</a>", _r_app_getwebsite_url ());
 
@@ -782,7 +832,7 @@ INT_PTR CALLBACK SettingsProc (
 		{
 			INT ctrl_id = GetDlgCtrlID ((HWND)lparam);
 
-			if (ctrl_id == IDC_AMOUNT_RANGE || ctrl_id == IDC_DENSITY_RANGE || ctrl_id == IDC_SPEED_RANGE || ctrl_id == IDC_HUE_RANGE)
+			if (ctrl_id == IDC_AMOUNT_RANGE || ctrl_id == IDC_DENSITY_RANGE || ctrl_id == IDC_SPEED_RANGE || ctrl_id == IDC_HUE_RANGE || ctrl_id == IDC_GLYPH_SIZE_RANGE)
 			{
 				SetBkMode ((HDC)wparam, TRANSPARENT); // background-hack
 				SetTextColor ((HDC)wparam, GetSysColor (COLOR_GRAYTEXT));
@@ -873,9 +923,13 @@ INT_PTR CALLBACK SettingsProc (
 					SendDlgItemMessageW (hwnd, IDC_DENSITY, UDM_SETPOS32, 0, DENSITY_DEFAULT);
 					SendDlgItemMessageW (hwnd, IDC_SPEED, UDM_SETPOS32, 0, SPEED_DEFAULT);
 					SendDlgItemMessageW (hwnd, IDC_HUE, UDM_SETPOS32, 0, HUE_DEFAULT);
+					SendDlgItemMessageW (hwnd, IDC_GLYPH_SIZE, UDM_SETPOS32, 0, GLYPH_SIZE_DEFAULT);
+
+					CheckDlgButton (hwnd, IDC_DPISCALE_CHK, BST_UNCHECKED);
 
 					PostMessageW (hwnd, WM_COMMAND, MAKEWPARAM (IDC_RANDOMIZECOLORS_CHK, 0), 0);
 					PostMessageW (hwnd, WM_COMMAND, MAKEWPARAM (IDC_ISCLOSEONESC_CHK, 0), 0);
+					PostMessageW (hwnd, WM_COMMAND, MAKEWPARAM (IDC_DPISCALE_CHK, 0), 0);
 
 					break;
 				}
@@ -916,6 +970,26 @@ INT_PTR CALLBACK SettingsProc (
 					new_value = (LONG)SendDlgItemMessageW (hwnd, IDC_HUE, UDM_GETPOS32, 0, 0);
 
 					config.hue = new_value;
+
+					break;
+				}
+
+				case IDC_GLYPH_SIZE_CTRL:
+				{
+					config.glyph_size = (LONG)SendDlgItemMessageW (hwnd, IDC_GLYPH_SIZE, UDM_GETPOS32, 0, 0);
+					break;
+				}
+
+				case IDC_DPISCALE_CHK:
+				{
+					BOOLEAN is_enabled;
+
+					is_enabled = _r_ctrl_isbuttonchecked (hwnd, ctrl_id);
+
+					_r_ctrl_enable (hwnd, IDC_GLYPH_SIZE_CTRL, !is_enabled);
+					_r_ctrl_enable (hwnd, IDC_GLYPH_SIZE, !is_enabled);
+
+					config.is_dpi_scale = is_enabled;
 
 					break;
 				}
