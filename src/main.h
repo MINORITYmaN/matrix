@@ -80,6 +80,9 @@ typedef struct _MATRIX_COLUMN
 
 typedef struct _MATRIX
 {
+        HWND hwnd;
+        struct _MATRIX *next;
+
         // bitmap containing glyphs.
         HDC hdc;
         HBITMAP hbitmap;
