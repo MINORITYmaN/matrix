@@ -11,6 +11,11 @@
 
 STATIC_DATA config = {0};
 
+// All screensaver windows (including child previews) share one animation clock.
+static PMATRIX matrices = NULL;
+static UINT_PTR animation_timer = 0;
+static LONG animation_hue = 0;
+
 #define RND_MAX INT_MAX
 
 FORCEINLINE LONG ClampLong (
@@ -395,18 +400,14 @@ VOID SetMatrixBitmap (
 
 VOID DecodeMatrix (
 	_In_ HWND hwnd,
-	_In_ PMATRIX matrix
+	_In_ PMATRIX matrix,
+	_In_ LONG hue
 )
 {
-	static LONG new_hue = 0;
-
         PMATRIX_COLUMN column;
 
         if (!matrix->hdc_back || !matrix->hdc_window)
                 return;
-
-	if (!new_hue)
-		new_hue = config.hue;
 
 	for (ULONG_PTR x = 0; x < matrix->numcols; x++)
 	{
@@ -417,24 +418,7 @@ VOID DecodeMatrix (
                 RedrawMatrixColumn (column, matrix, matrix->hdc_back, (ULONG)x * GLYPH_WIDTH);
 	}
 
-	if (config.is_random)
-	{
-		if (config.is_smooth)
-		{
-			new_hue = (new_hue >= HUE_MAX) ? HUE_MIN : new_hue + 1;
-		}
-		else
-		{
-			if (_r_sys_gettickcount () % 2)
-				new_hue = _r_math_getrandomrange (HUE_MIN, HUE_MAX);
-		}
-	}
-	else
-	{
-		new_hue = config.hue;
-	}
-
-        SetMatrixBitmap (matrix, new_hue);
+        SetMatrixBitmap (matrix, hue);
 
         BitBlt (matrix->hdc_window, 0, 0, matrix->width, matrix->height,
                 matrix->hdc_back, 0, 0, SRCCOPY);
@@ -539,6 +523,43 @@ VOID DestroyMatrix (
 	_r_mem_free (old_matrix);
 }
 
+// Called once per animation frame, never once per monitor.
+VOID UpdateAnimationHue ()
+{
+	if (config.is_random)
+	{
+		if (config.is_smooth)
+		{
+			animation_hue = (animation_hue >= HUE_MAX) ? HUE_MIN : animation_hue + 1;
+		}
+		else
+		{
+			if (_r_sys_gettickcount () % 2)
+				animation_hue = _r_math_getrandomrange (HUE_MIN, HUE_MAX);
+		}
+	}
+	else
+	{
+		animation_hue = config.hue;
+	}
+}
+
+VOID CALLBACK AnimationTimerProc (
+        _In_ HWND hwnd,
+        _In_ UINT msg,
+        _In_ UINT_PTR timer_id,
+        _In_ DWORD time
+)
+{
+        if (!animation_timer || timer_id != animation_timer)
+                return;
+
+        UpdateAnimationHue ();
+
+        for (PMATRIX matrix = matrices; matrix; matrix = matrix->next)
+                DecodeMatrix (matrix->hwnd, matrix, animation_hue);
+}
+
 LRESULT CALLBACK ScreensaverProc (
 	_In_ HWND hwnd,
 	_In_ UINT msg,
@@ -566,14 +587,28 @@ LRESULT CALLBACK ScreensaverProc (
 				return FALSE;
 
 			SetWindowLongPtrW (hwnd, GWLP_USERDATA, (LONG_PTR)matrix);
-			SetTimer (hwnd, UID, ((SPEED_MAX - config.speed) + SPEED_MIN) * 10, 0);
+                        if (!animation_timer)
+                        {
+                                animation_hue = config.hue;
+                                animation_timer = SetTimer (NULL, 0, ((SPEED_MAX - config.speed) + SPEED_MIN) * 10, AnimationTimerProc);
+
+                                if (!animation_timer)
+                                {
+                                        SetWindowLongPtrW (hwnd, GWLP_USERDATA, 0);
+                                        DestroyMatrix (hwnd, &matrix);
+                                        return FALSE;
+                                }
+                        }
+
+                        matrix->hwnd = hwnd;
+                        matrix->next = matrices;
+                        matrices = matrix;
 
 			return TRUE;
 		}
 
 		case WM_NCDESTROY:
 		{
-			KillTimer (hwnd, UID);
 			is_savecursor = FALSE;
 
 			matrix = (PMATRIX)GetWindowLongPtr (hwnd, GWLP_USERDATA);
@@ -581,6 +616,20 @@ LRESULT CALLBACK ScreensaverProc (
 			if (matrix)
 			{
 				SetWindowLongPtrW (hwnd, GWLP_USERDATA, 0);
+
+                                PMATRIX *link = &matrices;
+
+                                while (*link && *link != matrix)
+                                        link = &(*link)->next;
+
+                                if (*link)
+                                        *link = matrix->next;
+
+                                if (!matrices && animation_timer)
+                                {
+                                        KillTimer (NULL, animation_timer);
+                                        animation_timer = 0;
+                                }
 
                                 DestroyMatrix (hwnd, &matrix);
 			}
@@ -596,16 +645,6 @@ LRESULT CALLBACK ScreensaverProc (
 		case WM_CLOSE:
 		{
 			DestroyWindow (hwnd);
-
-			return FALSE;
-		}
-
-		case WM_TIMER:
-		{
-			matrix = (PMATRIX)GetWindowLongPtr (hwnd, GWLP_USERDATA);
-
-			if (matrix)
-				DecodeMatrix (hwnd, matrix);
 
 			return FALSE;
 		}
