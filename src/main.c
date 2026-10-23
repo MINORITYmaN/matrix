@@ -440,6 +440,11 @@ VOID DecodeMatrix (
                 matrix->hdc_back, 0, 0, SRCCOPY);
 }
 
+VOID DestroyMatrix (
+        _In_ HWND hwnd,
+        _Inout_ PMATRIX *matrix
+);
+
 PMATRIX CreateMatrix (
         _In_ HWND hwnd,
         _In_ ULONG width,
@@ -479,8 +484,14 @@ PMATRIX CreateMatrix (
 
                 matrix->column[x].glyph = _r_mem_allocate (sizeof (GLYPH) * (numrows + 16));
 
-                if (matrix->column[x].glyph)
-                        RtlZeroMemory (matrix->column[x].glyph, sizeof (GLYPH) * (numrows + 16));
+                if (!matrix->column[x].glyph)
+                {
+                        DestroyMatrix (hwnd, &matrix);
+
+                        return NULL;
+                }
+
+                RtlZeroMemory (matrix->column[x].glyph, sizeof (GLYPH) * (numrows + 16));
         }
 
         matrix->hdc_window = GetDC (hwnd);
